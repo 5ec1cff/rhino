@@ -243,13 +243,13 @@ public class FunctionObject extends BaseFunction {
         try {
             // getDeclaredMethods may be rejected by the security manager
             // but getMethods is more expensive
-            if (!sawSecurityException) methods = clazz.getDeclaredMethods();
+            if (!sawSecurityException) methods = JavaMembers.getDeclaredMethods(clazz);
         } catch (SecurityException e) {
             // If we get an exception once, give up on getDeclaredMethods
             sawSecurityException = true;
         }
         if (methods == null) {
-            methods = clazz.getMethods();
+            methods = JavaMembers.getMethods(clazz);
         }
         int count = 0;
         for (int i = 0; i < methods.length; i++) {

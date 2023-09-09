@@ -9,12 +9,7 @@ package org.mozilla.javascript;
 import static java.lang.reflect.Modifier.isProtected;
 import static java.lang.reflect.Modifier.isPublic;
 
-import java.lang.reflect.AccessibleObject;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Member;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
+import java.lang.reflect.*;
 import java.security.AccessControlContext;
 import java.security.AllPermission;
 import java.security.Permission;
@@ -33,10 +28,90 @@ import javax.lang.model.SourceVersion;
  */
 class JavaMembers {
 
-    private static final boolean STRICT_REFLECTIVE_ACCESS =
-            SourceVersion.latestSupported().ordinal() > 8;
+    private static final boolean STRICT_REFLECTIVE_ACCESS;
 
     private static final Permission allPermission = new AllPermission();
+
+    private static final Method sGetDeclaredFieldsUncheckedMethod;
+    private static final Method sGetDeclaredMethodsUncheckedMethod;
+
+    static {
+        boolean b;
+        try {
+            b = SourceVersion.latestSupported().ordinal() > 8;
+        } catch (Throwable t) {
+            b = false;
+        }
+        STRICT_REFLECTIVE_ACCESS = b;
+        Method m;
+        try {
+            // Android
+            m = Class.class.getDeclaredMethod("getDeclaredFieldsUnchecked", boolean.class);
+            m.setAccessible(true);
+        } catch (NoSuchMethodException ignore) {
+            m = null;
+        }
+        sGetDeclaredFieldsUncheckedMethod = m;
+        try {
+            // Android
+            m = Class.class.getDeclaredMethod("getDeclaredMethodsUnchecked", boolean.class);
+            m.setAccessible(true);
+        } catch (NoSuchMethodException ignore) {
+            m = null;
+        }
+        sGetDeclaredMethodsUncheckedMethod = m;
+    }
+
+    static Field[] getDeclaredFields(Class<?> clazz) {
+        if (sGetDeclaredFieldsUncheckedMethod != null) {
+            try {
+                return (Field[]) sGetDeclaredFieldsUncheckedMethod.invoke(clazz, false);
+            } catch (IllegalAccessException | InvocationTargetException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return clazz.getDeclaredFields();
+    }
+
+    private static Method[] getDeclaredMethods(Class<?> clazz, boolean isPublic) {
+        if (sGetDeclaredMethodsUncheckedMethod == null) {
+            if (isPublic) {
+                return clazz.getMethods();
+            } else {
+                return clazz.getDeclaredMethods();
+            }
+        }
+        List<Method> methods = new ArrayList<>();
+        Method[] ms;
+        try {
+            ms = (Method[]) sGetDeclaredMethodsUncheckedMethod.invoke(clazz, isPublic);
+        } catch (InvocationTargetException | IllegalAccessException e) {
+            throw new RuntimeException(e);
+        }
+        for (Method m: ms) {
+            try {
+                // filter out methods with invalid types
+                m.getReturnType();
+                m.getParameterTypes();
+            } catch (NoClassDefFoundError e) {
+                continue;
+            }
+            methods.add(m);
+        }
+        Method[] arr = new Method[methods.size()];
+        for (int i = 0; i < arr.length; i++) {
+            arr[i] = methods.get(i);
+        }
+        return arr;
+    }
+
+    static Method[] getDeclaredMethods(Class<?> clazz) {
+        return getDeclaredMethods(clazz, false);
+    }
+
+    static Method[] getMethods(Class<?> clazz) {
+        return getDeclaredMethods(clazz, true);
+    }
 
     JavaMembers(Scriptable scope, Class<?> cl) {
         this(scope, cl, false);
@@ -312,8 +387,7 @@ class JavaMembers {
                 if (includeProtected || includePrivate) {
                     while (clazz != null) {
                         try {
-                            Method[] methods = clazz.getDeclaredMethods();
-                            for (Method method : methods) {
+                            for (Method method : getDeclaredMethods(clazz)) {
                                 int mods = method.getModifiers();
 
                                 if (isPublic(mods) || isProtected(mods) || includePrivate) {
@@ -335,7 +409,7 @@ class JavaMembers {
                             // Some security settings (i.e., applets) disallow
                             // access to Class.getDeclaredMethods. Fall back to
                             // Class.getMethods.
-                            Method[] methods = clazz.getMethods();
+                            Method[] methods = getMethods(clazz);
                             for (Method method : methods) {
                                 MethodSignature sig = new MethodSignature(method);
                                 if (!map.containsKey(sig)) map.put(sig, method);
@@ -654,10 +728,10 @@ class JavaMembers {
                 while (currentClass != null) {
                     // get all declared fields in this class, make them
                     // accessible, and save
-                    Field[] declared = currentClass.getDeclaredFields();
+                    Field[] declared = getDeclaredFields(currentClass);
                     for (Field field : declared) {
                         int mod = field.getModifiers();
-                        if (includePrivate || isPublic(mod) || isProtected(mod)) {
+                        if (field.getType() != null && (includePrivate || isPublic(mod) || isProtected(mod))) {
                             if (!field.isAccessible()) field.setAccessible(true);
                             fieldsList.add(field);
                         }
