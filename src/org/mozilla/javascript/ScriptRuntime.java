@@ -6,6 +6,12 @@
 
 package org.mozilla.javascript;
 
+import org.mozilla.javascript.ast.FunctionNode;
+import org.mozilla.javascript.v8dtoa.DoubleConversion;
+import org.mozilla.javascript.v8dtoa.FastDtoa;
+import org.mozilla.javascript.xml.XMLLib;
+import org.mozilla.javascript.xml.XMLObject;
+
 import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.math.BigDecimal;
@@ -16,11 +22,6 @@ import java.util.Arrays;
 import java.util.Locale;
 import java.util.ResourceBundle;
 import java.util.function.BiConsumer;
-import org.mozilla.javascript.ast.FunctionNode;
-import org.mozilla.javascript.v8dtoa.DoubleConversion;
-import org.mozilla.javascript.v8dtoa.FastDtoa;
-import org.mozilla.javascript.xml.XMLLib;
-import org.mozilla.javascript.xml.XMLObject;
 
 /**
  * This is the class that implements the runtime.
@@ -837,6 +838,9 @@ public class ScriptRuntime {
      * <p>See ECMA 7.1.3 (v11.0).
      */
     public static Number toNumeric(Object val) {
+        if (val instanceof Long) {
+            return BigInteger.valueOf((Long) val);
+        }
         if (val instanceof Number) {
             return (Number) val;
         }
